@@ -1,0 +1,13 @@
+apiVersion: v1
+description: Console Data
+name: cray-console-data
+home: "scms/console-data"
+version: 1.0.7
+description: "Kubernetes resources for console-data"
+keywords:
+  - cray-console-data
+sources:
+  - "https://stash.us.cray.com/projects/SCMS/repos/cms-console-data/browse"
+maintainers:
+  - name: rnoska
+    email: rnoska@hpe.com
