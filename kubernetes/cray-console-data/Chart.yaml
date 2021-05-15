@@ -2,7 +2,7 @@ apiVersion: v1
 description: Console Data
 name: cray-console-data
 home: "scms/console-data"
-version: 1.0.7
+version: 1.0.8
 description: "Kubernetes resources for console-data"
 keywords:
   - cray-console-data
