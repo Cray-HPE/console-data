@@ -1,3 +1,4 @@
+#!/usr/bin/env sh
 # Copyright 2021 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,23 +21,7 @@
 #
 # (MIT License)
 
-# This file only exists as a means to run tests in an automated fashion.
-
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12
-
-RUN set -ex \
-    && apk update \
-    && apk add build-base
-
-# Configure go env - installed as package but not quite configured
-ENV GOPATH=/usr/local/golib
-RUN export GOPATH=$GOPATH
-
-# Copy in all the necessary files
-COPY integration_test/*.go $GOPATH/src/
-COPY vendor/ $GOPATH/src/
-
-# Build the image and run the tests.
-RUN set -ex \
-  && go build -v -i -o /app/console_data_integration_test $GOPATH/src/*.go \
-  && /app/console_data_integration_test
+./install_cms_meta_tools.sh || exit 1
+./cms_meta_tools/update_versions/update_versions.sh || exit 1
+rm -rf ./cms_meta_tools
+exit 0

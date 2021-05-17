@@ -28,6 +28,9 @@ To build the latest service image from local source and execute the tests locall
 ./runIntegrationTest.sh
 ````
 
+## Versioning
+Use [SemVer](http://semver.org/). The version is located in the [.version](.version) file. Other files either read the version string from this file or have this version string written to them at build time using the [update_versions.sh](update_versions.sh) script, based on the information in the [update_versions.conf](update_versions.conf) file.
+
 ## Copyright and License
 
 This project is copyrighted by Hewlett Packard Enterprise Development LP and is under the MIT license. See the LICENSE file for details.
