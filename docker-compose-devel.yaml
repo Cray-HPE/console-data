@@ -6,7 +6,7 @@ networks:
 services:
   condat-postgres:
     hostname: console-data-cray-console-data-postgres
-    image: dtr.dev.cray.com/library/postgres:11-alpine
+    image: arti.dev.cray.com/third-party-docker-stable-local/postgres:11-alpine
     environment:
       - POSTGRES_PASSWORD=console
       - POSTGRES_USER=console
