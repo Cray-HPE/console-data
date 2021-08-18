@@ -23,7 +23,7 @@
 # Dockerfile for the console-data service
 
 # Build will be where we build the go binary
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 AS build
+FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 as build
 RUN set -eux \
     && apk update \
     && apk add build-base
@@ -41,7 +41,7 @@ RUN set -ex && go build -v -i -o /app/console_data_svc $GOPATH/src/*.go
 
 ### Final Stage ###
 # Start with a fresh image so build tools are not included
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12
+FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 as base
 
 RUN set -eux \
     && apk update \

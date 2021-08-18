@@ -22,7 +22,7 @@
 
 # This file only exists as a means to run tests in an automated fashion.
 
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12
+FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 as testbase
 
 RUN set -ex \
     && apk update \
