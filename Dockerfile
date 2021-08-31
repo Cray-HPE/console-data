@@ -25,8 +25,10 @@
 # Build will be where we build the go binary
 FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 as build
 RUN set -eux \
+    && apk add --upgrade --no-cache apk-tools \
     && apk update \
-    && apk add build-base
+    && apk add build-base \
+    && apk -U upgrade --no-cache
 
 # Configure go env - installed as package but not quite configured
 ENV GOPATH=/usr/local/golib
@@ -41,11 +43,13 @@ RUN set -ex && go build -v -i -o /app/console_data_svc $GOPATH/src/*.go
 
 ### Final Stage ###
 # Start with a fresh image so build tools are not included
-FROM arti.dev.cray.com/baseos-docker-master-local/alpine:3.13.5 as base
+FROM artifactory.algol60.net/docker.io/alpine:3.13 as base
 
 RUN set -eux \
+	&& apk add --upgrade --no-cache apk-tools \
     && apk update \
-    && apk add postgresql-client curl
+    && apk add --no-cache postgresql-client curl \
+    && apk -U upgrade --no-cache
 
 # Copy in the needed files
 COPY --from=build /app/console_data_svc /app/
