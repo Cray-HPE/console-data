@@ -8,7 +8,7 @@ description: "Kubernetes resources for console-data"
 keywords:
   - cray-console-data
 sources:
-  - "https://stash.us.cray.com/projects/SCMS/repos/cms-console-data/browse"
+  - "https://github.com/Cray-HPE/console-data"
 maintainers:
   - name: rnoska
     email: rnoska@hpe.com
