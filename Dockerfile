@@ -23,7 +23,7 @@
 # Dockerfile for the console-data service
 
 # Build will be where we build the go binary
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.14-alpine3.12 as build
+FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.16-alpine3.13 as build
 RUN set -eux \
     && apk add --upgrade --no-cache apk-tools \
     && apk update \
@@ -36,25 +36,36 @@ RUN export GOPATH=$GOPATH
 
 # Copy in all the necessary files
 COPY console_data_svc/*.go $GOPATH/src/
+COPY go.mod $GOPATH/src
 COPY vendor/ $GOPATH/src/
+
+# set up go env
+RUN go env -w GO111MODULE=auto
 
 # Build the image
 RUN set -ex && go build -v -i -o /app/console_data_svc $GOPATH/src/*.go
 
 ### Final Stage ###
 # Start with a fresh image so build tools are not included
-FROM artifactory.algol60.net/docker.io/alpine:3.13 as base
-
-RUN set -eux \
-	&& apk add --upgrade --no-cache apk-tools \
-    && apk update \
-    && apk add --no-cache postgresql-client curl \
-    && apk -U upgrade --no-cache
+FROM artifactory.algol60.net/docker.io/alpine:3.13.5 as base
 
 # Copy in the needed files
 COPY --from=build /app/console_data_svc /app/
 
+# Install needed packages
+# NOTE: setcap allows non-root users to bind to port 80 for a specific application
+RUN set -eux \
+    && apk add --upgrade --no-cache apk-tools \
+    && apk update \
+    && apk add --no-cache postgresql-client curl libcap \
+    && apk -U upgrade --no-cache \
+    && setcap 'cap_net_bind_service=+ep' /app/console_data_svc
+
 RUN echo 'alias ll="ls -l"' > ~/.bashrc
 RUN echo 'alias vi="vim"' >> ~/.bashrc
+
+# set to run as user 'nobody'
+RUN chmod -R 755 /app
+USER 65534:65534
 
 ENTRYPOINT ["/app/console_data_svc"]
