@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+# (C) Copyright [2022] Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -21,52 +21,40 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 #
-# Dockerfile for the console-data service
+FROM artifactory.algol60.net/csm-docker/stable/registry.suse.com/suse/sle15:15.3
 
-# Build will be where we build the go binary
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.16-alpine3.13 as build
-RUN set -eux \
-    && apk add --upgrade --no-cache apk-tools \
-    && apk update \
-    && apk add build-base \
-    && apk -U upgrade --no-cache
+ARG SLES_REPO_USERNAME
+ARG SLES_REPO_PASSWORD
+ARG SLES_MIRROR="https://${SLES_REPO_USERNAME}:${SLES_REPO_PASSWORD}@artifactory.algol60.net/artifactory/sles-mirror"
+ARG ARCH=x86_64
+ARG MUNGE_UID=600
+ARG MUNGE_GID=600
+ARG MUNGE_NAME=munge
 
-# Configure go env - installed as package but not quite configured
-ENV GOPATH=/usr/local/golib
-RUN export GOPATH=$GOPATH
+# attach volumes now so chmod commands impact these dirs
+VOLUME /var/run/munge /etc/munge
 
-# Copy in all the necessary files
-COPY console_data_svc/*.go $GOPATH/src/
-COPY go.mod $GOPATH/src
-COPY vendor/ $GOPATH/src/
+# Steps in the following order:
+# - create munge group and user with specified ID's (that can be used in charts)
+# - install munge (uses created user/group)
+# - clean up dir ownership and permissions
 
-# set up go env
-RUN go env -w GO111MODULE=auto
+RUN \
+  addgroup -g ${MUNGE_GID} ${MUNGE_NAME} && adduser -u ${MUNGE_UID} -G ${MUNGE_GID} ${MUNGE_NAME} && \
+  zypper --non-interactive rr --all && \
+  zypper --non-interactive ar ${SLES_MIRROR}/Products/SLE-Module-Basesystem/15-SP3/${ARCH}/product?auth=basic sles15sp3-Module-Basesystem-product && \
+  zypper --non-interactive ar ${SLES_MIRROR}/Updates/SLE-Module-Basesystem/15-SP3/${ARCH}/update?auth=basic sles15sp3-Module-Basesystem-update && \
+  zypper --non-interactive ar ${SLES_MIRROR}/Products/SLE-Module-HPC/15-SP3/${ARCH}/product?auth=basic sles15sp3-Module-HPC-product && \
+  zypper --non-interactive ar ${SLES_MIRROR}/Updates/SLE-Module-HPC/15-SP3/${ARCH}/update?auth=basic sles15sp3-Module-HPC-update && \
+  zypper update -y && \
+  zypper install -y munge && \
+  zypper clean -a && zypper --non-interactive rr --all && rm -f /etc/zypp/repos.d/* && rm -Rf /root/.zypp && \
+  chmod 3777 /run/munge /var/run/munge && \
+  chmod 0700 /etc/munge /var/lib/munge /var/log/munge
 
-# Build the image
-RUN set -ex && go build -v -i -o /app/console_data_svc $GOPATH/src/*.go
+# Switch to the munge user/group to run
+USER ${MUNGE_UID}:${MUNGE_GID}
 
-### Final Stage ###
-# Start with a fresh image so build tools are not included
-FROM artifactory.algol60.net/docker.io/alpine:3.13.5 as base
-
-# Copy in the needed files
-COPY --from=build /app/console_data_svc /app/
-
-# Install needed packages
-# NOTE: setcap allows non-root users to bind to port 80 for a specific application
-RUN set -eux \
-    && apk add --upgrade --no-cache apk-tools \
-    && apk update \
-    && apk add --no-cache postgresql-client curl libcap \
-    && apk -U upgrade --no-cache \
-    && setcap 'cap_net_bind_service=+ep' /app/console_data_svc
-
-RUN echo 'alias ll="ls -l"' > ~/.bashrc
-RUN echo 'alias vi="vim"' >> ~/.bashrc
-
-# set to run as user 'nobody'
-RUN chmod -R 755 /app
-USER 65534:65534
-
-ENTRYPOINT ["/app/console_data_svc"]
+# enter the 'munged' process in the foreground
+# NOTE: -f forces to start even with warnings present - remove when able to
+ENTRYPOINT ["/usr/sbin/munged", "-F", "-f"]
