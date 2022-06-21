@@ -23,7 +23,7 @@
 #
 
 #FROM artifactory.algol60.net/csm-docker/stable/registry.suse.com/suse/sle15:15.3 as base
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.16-alpine3.13 as build
+FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.16-alpine3.13 as base
 
 ARG SLES_REPO_USERNAME
 ARG SLES_REPO_PASSWORD
