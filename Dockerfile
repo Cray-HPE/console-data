@@ -44,7 +44,7 @@ VOLUME /var/run/munge /etc/munge
 # - clean up dir ownership and permissions
 
 RUN \
-  groupadd -g ${MUNGE_GID} ${MUNGE_NAME} && useradd -u ${MUNGE_UID} -G ${MUNGE_GID} ${MUNGE_NAME} && \
+  #groupadd -g ${MUNGE_GID} ${MUNGE_NAME} && useradd -u ${MUNGE_UID} -G ${MUNGE_GID} ${MUNGE_NAME} && \
   zypper --non-interactive rr --all && \
   zypper --non-interactive ar ${SLES_MIRROR}/Products/SLE-Module-Basesystem/15-SP3/${ARCH}/product?auth=basic sles15sp3-Module-Basesystem-product && \
   zypper --non-interactive ar ${SLES_MIRROR}/Updates/SLE-Module-Basesystem/15-SP3/${ARCH}/update?auth=basic sles15sp3-Module-Basesystem-update && \
