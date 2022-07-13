@@ -24,7 +24,7 @@
 # Dockerfile for the console-data service
 
 # Build will be where we build the go binary
-FROM arti.dev.cray.com/baseos-docker-master-local/golang:1.16-alpine3.13 as build
+FROM artifactory.algol60.net/docker.io/library/golang:1.16-alpine as build
 RUN set -eux \
     && apk add --upgrade --no-cache apk-tools \
     && apk update \
@@ -48,7 +48,7 @@ RUN set -ex && go build -v -i -o /app/console_data_svc $GOPATH/src/*.go
 
 ### Final Stage ###
 # Start with a fresh image so build tools are not included
-FROM artifactory.algol60.net/docker.io/alpine:3.13.5 as base
+FROM artifactory.algol60.net/csm-docker/stable/docker.io/library/alpine:3.15 as base
 
 # Copy in the needed files
 COPY --from=build /app/console_data_svc /app/

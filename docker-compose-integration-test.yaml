@@ -29,7 +29,7 @@ networks:
 services:
   condat-postgres:
     hostname: console-data-cray-console-data-postgres
-    image: arti.dev.cray.com/third-party-docker-stable-local/postgres:11-alpine
+    image: artifactory.algol60.net/artifactory/csm-docker/stable/docker.io/postgres:11-alpine
     environment:
       - POSTGRES_PASSWORD=console
       - POSTGRES_USER=console
