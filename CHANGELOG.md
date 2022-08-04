@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
  - CASMINST-5145: Update the base service chart to pull in necessary changes for updgraded istio
+ - CASMCMS-8140: Fix handling Hill nodes.
 
 ## [1.4.0] - 2022-07-12
 ### Changed
