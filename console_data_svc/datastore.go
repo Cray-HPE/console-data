@@ -85,6 +85,50 @@ func prepareDB() (err error) {
 	return nil
 }
 
+// aquireNodesOfType will get a set of nodes for a particular type
+func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
+	errList = []string{}
+	acquired = []NodeConsoleInfo{}
+
+	// sql query for pulling records of a particular type
+	sqlStmt := `
+		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
+		from ownership
+		where node_class=$1 and console_pod_id is NULL
+		limit $2
+	`
+	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
+	rows, err := DB.Query(sqlStmt, nodeType, numNodes)
+	defer rows.Close()
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: dbConsolePodAcquireNodes: There is a SELECT error: %s", err)
+		log.Printf(errMsg)
+		errList = append(errList, errMsg)
+	}
+	if rows != nil {
+		for rows.Next() {
+			var nci NodeConsoleInfo
+			err := rows.Scan(&nci.NodeName,
+				&nci.BmcName,
+				&nci.BmcFqdn,
+				&nci.Class,
+				&nci.NID,
+				&nci.Role)
+			if err != nil {
+				errList = append(errList, fmt.Sprintf("WARN: dbConsolePodAcquireNodes: Error scanning row: %s", err))
+				continue // Try next record.
+			}
+			acquired = append(acquired, nci)
+			if len(nodes) > 0 {
+				nodes += fmt.Sprintf(",'%s' ", nci.NodeName)
+			} else {
+				nodes += fmt.Sprintf("'%s' ", nci.NodeName)
+			}
+		}
+	}
+	return nodes, errList, acquired
+}
+
 // dbConsolePodAcquireNodes will attempt to acquire the numbers of nodes requested by type.
 // All acquired nodes will be added to the NodeConsoleInfo array.  Any error(s) will be returned.
 func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
@@ -101,79 +145,44 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 	var errList []string
 	acquired = []NodeConsoleInfo{}
 
-	sqlStmt := `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL
-		limit $2
-	`
-	var i int = 0
 	if numMtn > 0 {
-		rows, err := DB.Query(sqlStmt, "Mountain", numMtn)
-		defer rows.Close()
-		if err != nil {
-			errMsg := fmt.Sprintf("WARN: dbConsolePodAcquireNodes: There is a SELECT error: %s", err)
-			log.Printf(errMsg)
-			errList = append(errList, errMsg)
-		}
-		if rows != nil {
-			for rows.Next() {
-				var nci NodeConsoleInfo
-				err := rows.Scan(&nci.NodeName,
-					&nci.BmcName,
-					&nci.BmcFqdn,
-					&nci.Class,
-					&nci.NID,
-					&nci.Role)
-				if err != nil {
-					errList = append(errList, fmt.Sprintf("WARN: dbConsolePodAcquireNodes: Error scanning row: %s", err))
-					continue // Try next record.
-				}
-				acquired = append(acquired, nci)
-				if i > 0 {
-					nodes += fmt.Sprintf(",'%s' ", nci.NodeName)
+		log.Printf("dbConsolePodAcquireNodes: acquiring %d mtn nodes", numMtn)
+		// The mountain hardware may be classified as either 'Mountain' or 'Hill'
+		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn)
+
+		// if we don't have enough 'Mountain' nodes, look for 'Hill' nodes
+		if len(acquired) < numMtn {
+			log.Printf("dbConsolePodAcquireNodes: acquiring %d hill nodes", numMtn-len(acquired))
+			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
+			if len(newNodes) > 0 {
+				if len(nodes) > 0 {
+					nodes += fmt.Sprintf(",'%s' ", newNodes)
 				} else {
-					nodes += fmt.Sprintf("'%s' ", nci.NodeName)
+					nodes = newNodes
 				}
-				i++
 			}
+			errList = append(errList, newErrList...)
+			acquired = append(acquired, newAcquired...)
 		}
 	}
 
 	if numRvr > 0 {
-		rows, err := DB.Query(sqlStmt, "River", numRvr)
-		defer rows.Close()
-		if err != nil {
-			errMsg := fmt.Sprintf("WARN: dbClearStaleNodes: There is a SELECT error: %s", err)
-			log.Printf(errMsg)
-			errList = append(errList, errMsg)
-		}
-		if rows != nil {
-			for rows.Next() {
-				var nci NodeConsoleInfo
-				err := rows.Scan(&nci.NodeName,
-					&nci.BmcName,
-					&nci.BmcFqdn,
-					&nci.Class,
-					&nci.NID,
-					&nci.Role)
-				if err != nil {
-					errList = append(errList, fmt.Sprintf("WARN: dbConsolePodAcquireNodes: Error scanning row: %s", err))
-					continue // Try next record.
-				}
-				acquired = append(acquired, nci)
-				if i > 0 {
-					nodes += fmt.Sprintf(",'%s' ", nci.NodeName)
-				} else {
-					nodes += fmt.Sprintf("'%s' ", nci.NodeName)
-				}
-				i++
+		log.Printf("dbConsolePodAcquireNodes: acquiring %d river nodes", numRvr)
+		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr)
+		if len(newNodes) > 0 {
+			if len(nodes) > 0 {
+				nodes += fmt.Sprintf(",'%s' ", newNodes)
+			} else {
+				nodes = newNodes
 			}
 		}
+		errList = append(errList, newErrList...)
+		acquired = append(acquired, newAcquired...)
 	}
 
 	if len(nodes) > 0 {
-		sqlStmt = `
+		log.Printf("  Acquired %d new nodes", len(acquired))
+		sqlStmt := `
 			update ownership set console_pod_id = '%s', heartbeat=now()
 			where node_name in (%s)
 		`
@@ -203,7 +212,6 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 	} else {
 		return rowsAffected, acquired, nil
 	}
-
 }
 
 // dbUpdateNodes will ensure that the list of node metadata exists in the database.
