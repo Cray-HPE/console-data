@@ -156,7 +156,7 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
 			if len(newNodes) > 0 {
 				if len(nodes) > 0 {
-					nodes += fmt.Sprintf(",'%s' ", newNodes)
+					nodes += fmt.Sprintf(", %s ", newNodes)
 				} else {
 					nodes = newNodes
 				}
@@ -171,7 +171,7 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr)
 		if len(newNodes) > 0 {
 			if len(nodes) > 0 {
-				nodes += fmt.Sprintf(",'%s' ", newNodes)
+				nodes += fmt.Sprintf(", %s ", newNodes)
 			} else {
 				nodes = newNodes
 			}
