@@ -57,7 +57,7 @@ acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them
   Give me up to 1k mtgn and 500 river.
   Makes the assignments based on what is available.
   Return the new list of nodes (consoleNI struct) of what was assigned.
-     May return nothing in the vast majority of times.
+	 May return nothing in the vast majority of times.
 
 */
 func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +219,7 @@ func findConsolePodForNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Let the caller know we were successful.  The console pod
-	// is part of the repsonse in nci.
+	// is part of the response in nci.
 	SendResponseJSON(w, http.StatusOK, nci)
 	return
 }

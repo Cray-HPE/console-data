@@ -22,7 +22,7 @@
 //  OTHER DEALINGS IN THE SOFTWARE.
 //
 
-// This file contains helper methods to suport test verification.
+// This file contains helper methods to support test verification.
 
 package main
 
@@ -36,8 +36,8 @@ import (
 	"time"
 )
 
-// Datastore is a collection db cnetric of helper methods for use as needed
-// to assist in testing by proviging db operations not included in the API.
+// Datastore is a collection of db-centric helper methods for use as needed
+// to assist in testing by providing db operations not included in the API.
 type DataStore struct {
 	DB *sql.DB
 }
@@ -92,8 +92,8 @@ func (ds *DataStore) Close() {
 // RemoveAll deletes all items from the console ownership.
 func (ds *DataStore) RemoveAll() (rowsAffected int64, err error) {
 	sqlStmt := `
-        delete from ownership
-    `
+		delete from ownership
+	`
 	result, err := ds.DB.Exec(sqlStmt)
 	rowsAffected = 0
 	if err != nil {
@@ -111,8 +111,8 @@ func (ds *DataStore) RemoveAll() (rowsAffected int64, err error) {
 // CheckConn will try to execute a query
 func (ds *DataStore) CheckConn() (err error) {
 	sqlStmt := `
-        select count(1) from ownership
-    `
+		select count(1) from ownership
+	`
 	_, err = ds.DB.Exec(sqlStmt)
 	if err != nil {
 		errMsg := fmt.Sprintf("WARN: GetCount: There is a SELECT error: %s", err)
@@ -126,8 +126,8 @@ func (ds *DataStore) CheckConn() (err error) {
 // GetCount returns the number of records in console ownership.
 func (ds *DataStore) GetCount() (recordCount int64, err error) {
 	sqlStmt := `
-        select count(1) from ownership
-    `
+		select count(1) from ownership
+	`
 	result, err := ds.DB.Query(sqlStmt)
 	if err != nil {
 		errMsg := fmt.Sprintf("WARN: GetCount: There is a SELECT error: %s", err)

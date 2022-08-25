@@ -55,7 +55,7 @@ func main() {
 	// Enable debug logging if requested.
 	debugLog.Init()
 
-	log.Printf("Console data serivce starting")
+	log.Printf("Console data service starting")
 
 	// Setup a channel to wait for the os to tell us to stop.
 	// NOTE - This must be set up before initializing anything that needs
