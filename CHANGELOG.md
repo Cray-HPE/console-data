@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
  - CASMCMS-8156: Fix bug in handling Hill nodes.
+ - Spelling corrections
 
 ## [1.6.0] - 2022-08-04
 ### Changed
