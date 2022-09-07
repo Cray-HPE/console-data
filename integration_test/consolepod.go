@@ -112,14 +112,14 @@ type ConsoleApiOp struct {
 // statusCode - the http response code
 // ncisAcquired - the list of nodes acquired
 // err - any error
-func (o *ConsoleApiOp) Acquire(cosole_pod_id string, numMtn, numRvr int) (statusCode int, ncisAcquired []NodeConsoleInfo, err error) {
+func (o *ConsoleApiOp) Acquire(console_pod_id string, numMtn, numRvr int) (statusCode int, ncisAcquired []NodeConsoleInfo, err error) {
 
-	if cosole_pod_id == "" {
-		return 0, nil, errors.New("cosole_pod_id is required but was empty")
+	if console_pod_id == "" {
+		return 0, nil, errors.New("console_pod_id is required but was empty")
 	}
 
 	uri := "http://cray-console-data/v1/consolepod/%s/acquire"
-	uri = fmt.Sprintf(uri, cosole_pod_id)
+	uri = fmt.Sprintf(uri, console_pod_id)
 	client := &http.Client{Timeout: 15 * time.Second}
 	o.ReqData.NumMtn = numMtn
 	o.ReqData.NumRvr = numRvr

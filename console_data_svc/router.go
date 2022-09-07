@@ -22,7 +22,7 @@
 //  OTHER DEALINGS IN THE SOFTWARE.
 //
 
-// This file contains functionality for defining and handlng http routing.
+// This file contains functionality for defining and handling http routing.
 
 package main
 
@@ -36,7 +36,7 @@ import (
 	"strings"
 )
 
-// httpRoute specifies the method, uri regex and the hendler.
+// httpRoute specifies the method, uri regex and the handler.
 type httpRoute struct {
 	httpMethod string
 	uriRegex   *regexp.Regexp

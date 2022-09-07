@@ -69,11 +69,11 @@ func prepareDB() (err error) {
 	create_table := `
 	CREATE TABLE IF NOT EXISTS ownership (
 		node_name VARCHAR( 50 )  PRIMARY KEY NOT NULL CHECK (node_name <> ''),
-        node_bmc_name VARCHAR( 50 )  NOT NULL CHECK (node_bmc_name <> ''),
-        node_bmc_fqdn VARCHAR( 50 )  NOT NULL CHECK (node_bmc_fqdn <> ''),
-        node_class VARCHAR( 50 )  NOT NULL CHECK (node_class <> ''),
-        node_nid_number INTEGER  NOT NULL CHECK (node_nid_number <> 0),
-        node_role VARCHAR( 50 )  NOT NULL CHECK (node_role <> ''),
+		node_bmc_name VARCHAR( 50 )  NOT NULL CHECK (node_bmc_name <> ''),
+		node_bmc_fqdn VARCHAR( 50 )  NOT NULL CHECK (node_bmc_fqdn <> ''),
+		node_class VARCHAR( 50 )  NOT NULL CHECK (node_class <> ''),
+		node_nid_number INTEGER  NOT NULL CHECK (node_nid_number <> 0),
+		node_role VARCHAR( 50 )  NOT NULL CHECK (node_role <> ''),
 		console_pod_id VARCHAR( 50 ),
 		last_updated TIMESTAMP,
 		heartbeat TIMESTAMP
@@ -85,7 +85,7 @@ func prepareDB() (err error) {
 	return nil
 }
 
-// aquireNodesOfType will get a set of nodes for a particular type
+// acquireNodesOfType will get a set of nodes for a particular type
 func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
 	errList = []string{}
 	acquired = []NodeConsoleInfo{}
@@ -225,27 +225,27 @@ func dbUpdateNodes(ncis *[]NodeConsoleInfo) (rowsInserted int64, err error) {
 	var errList []string
 	rowsInserted = 0
 	sql := `
-        insert into ownership (node_name,
-          node_bmc_name,
-          node_bmc_fqdn,
-          node_class,
-          node_nid_number,
-          node_role,
-          console_pod_id,
-          last_updated,
-	      heartbeat)
-        values
-          ($1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          NULL,
-          now(),
-	      NULL)
-        on conflict (node_name) do nothing
-    `
+		insert into ownership (node_name,
+		  node_bmc_name,
+		  node_bmc_fqdn,
+		  node_class,
+		  node_nid_number,
+		  node_role,
+		  console_pod_id,
+		  last_updated,
+		  heartbeat)
+		values
+		  ($1,
+		  $2,
+		  $3,
+		  $4,
+		  $5,
+		  $6,
+		  NULL,
+		  now(),
+		  NULL)
+		on conflict (node_name) do nothing
+	`
 	for _, nci := range *ncis {
 		result, err := DB.Exec(sql,
 			nci.NodeName,
@@ -313,8 +313,8 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 	// Look for the node and if found set *nci.NodeConsoleName = console_pod_id
 	// Return any error found.
 	sqlStmt := `
-        select console_pod_id from ownership where node_name=$1
-    `
+		select console_pod_id from ownership where node_name=$1
+	`
 	if nci == nil || nci.NodeName == "" {
 		return errors.New("Nil or empty NodeName.")
 	}
@@ -394,7 +394,7 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 	}
 	// Let the caller see the list that was not updated (if any).
 	for _, nci := range notUpdated {
-		log.Printf("nci not updaed: %s", nci.NodeName)
+		log.Printf("nci not updated: %s", nci.NodeName)
 	}
 
 	if len(errList) > 0 {
