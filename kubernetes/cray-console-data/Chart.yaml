@@ -23,7 +23,7 @@
 #
 apiVersion: v2
 name: cray-console-data
-version: 0.0.0
+version: 0.0.0-chart
 description: Kubernetes resources for console-data
 keywords:
   - cray-console
@@ -38,9 +38,9 @@ dependencies:
 maintainers:
   - name: dlaine-hpe
     email: laine@hpe.com
-appVersion: 0.0.0
+appVersion: 0.0.0-image
 annotations:
   artifacthub.io/images: |
     - name: cray-console-data
-      image: artifactory.algol60.net/csm-docker/stable/cray-console-data:0.0.0
+      image: artifactory.algol60.net/csm-docker/stable/cray-console-data:0.0.0-image
   artifacthub.io/license: MIT
