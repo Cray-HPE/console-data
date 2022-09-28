@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+ - CASMCMS-8252: Enabled building of unstable artifacts
+ - CASMCMS-8252: Updated header of update_versions.conf to reflect new tool options
+
+### Fixed
  - CASMCMS-8156: Fix bug in handling Hill nodes.
- - Spelling corrections
+ - Spelling corrections.
+ - CASMCMS-8252: Update Chart with correct image and chart version strings during builds.
 
 ## [1.6.0] - 2022-08-04
 ### Changed
