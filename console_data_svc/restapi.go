@@ -1,7 +1,7 @@
 //
 //  MIT License
 //
-//  (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+//  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
@@ -51,15 +51,12 @@ func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsole
 		Class: class, NID: nid, Role: role}
 }
 
-/*
-acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them to pod with current timestamp (called by console-node)
-  pod_id will be stateful set named (node-1, node-1, node-x)
-  Give me up to 1k mtgn and 500 river.
-  Makes the assignments based on what is available.
-  Return the new list of nodes (consoleNI struct) of what was assigned.
-     May return nothing in the vast majority of times.
-
-*/
+// acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them to pod with current timestamp (called by console-node)
+// pod_id will be stateful set named (node-1, node-1, node-x)
+// Give me up to 1k mtgn and 500 river.
+// Makes the assignments based on what is available.
+// Return the new list of nodes (consoleNI struct) of what was assigned.
+// May return nothing in the vast majority of times.
 func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 	type ReqData struct {
 		NumMtn int `json:"nummtn"` // Requested number of Mountain nodes
@@ -283,13 +280,10 @@ func updateNodes(w http.ResponseWriter, r *http.Request) {
 
 }
 
-/*
-clearStaleNodes(timestamp) → looks for HSM nodes with timestamp older than the given duration (in minutes) and
-clears pod info (called by console-operator) for each stale node
-  Remove the pod entry from the liveness table
-  update the ownership table setting unsetting the conman-pod-id where conman-pod-id = state pod name
-
-*/
+// clearStaleNodes(timestamp) → looks for HSM nodes with timestamp older than the given duration (in minutes) and
+// clears pod info (called by console-operator) for each stale node
+// Remove the pod entry from the liveness table
+// update the ownership table setting unsetting the conman-pod-id where conman-pod-id = state pod name
 func clearStaleNodes(w http.ResponseWriter, r *http.Request) {
 	durationStr := getField(r, 0) // Duration in minutes
 	if durationStr == "" {
@@ -332,10 +326,8 @@ func clearStaleNodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-/*
-consolePodRelease -> takes []NodeConsoleInfo, pod no longer monitors these nodes, free for acquisition
-  update the ownership table setting the conman-pod-id to NULL where node_name in ( nci.NodeName[,nci.NodeName]... )
-*/
+// consolePodRelease -> takes []NodeConsoleInfo, pod no longer monitors these nodes, free for acquisition
+// update the ownership table setting the conman-pod-id to NULL where node_name in ( nci.NodeName[,nci.NodeName]... )
 func consolePodRelease(w http.ResponseWriter, r *http.Request) {
 	pod_id := getField(r, 0)
 	log.Printf("consolePodRelease pod_id=%s\n", pod_id)
@@ -397,10 +389,8 @@ func consolePodRelease(w http.ResponseWriter, r *http.Request) {
 	SendResponseJSON(w, http.StatusOK, body)
 }
 
-/*
-deleteNodes -> takes []NodeConsoleInfo, - these nodes are no longer in the system at all
-  delete from ownership where node_name in ( nci.NodeName[,nci.NodeName]... )
-*/
+// deleteNodes -> takes []NodeConsoleInfo, - these nodes are no longer in the system at all
+// delete from ownership where node_name in ( nci.NodeName[,nci.NodeName]... )
 func deleteNodes(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("deleteNodes\n")

@@ -1,7 +1,7 @@
 //
 //  MIT License
 //
-//  (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+//  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
@@ -408,10 +408,8 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 	}
 }
 
-/*
-dbConsolePodRelease will remove the console pod from all nodes in the list.
-  takes []NodeConsoleInfo - pod no longer monitors these nodes, free for acquisition
-*/
+// dbConsolePodRelease will remove the console pod from all nodes in the list.
+// takes []NodeConsoleInfo - pod no longer monitors these nodes, free for acquisition
 func dbConsolePodRelease(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected int64, err error) {
 	// exit fast
 	if pod_id == "" || ncis == nil || len(*ncis) == 0 {
@@ -454,10 +452,8 @@ func dbConsolePodRelease(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected i
 
 }
 
-/*
-dbDeleteNodes will remove nodes from the provided list from the inventory.
-  takes []NodeConsoleInfo - these nodes are no longer in the system at all
-*/
+// dbDeleteNodes will remove nodes from the provided list from the inventory.
+// takes []NodeConsoleInfo - these nodes are no longer in the system at all
 func dbDeleteNodes(ncis *[]NodeConsoleInfo) (rowsAffected int64, err error) {
 	// exit fast
 	if ncis == nil || len(*ncis) == 0 {
