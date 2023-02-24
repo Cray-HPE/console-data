@@ -218,7 +218,7 @@ func inventoryCreateVolume(testName string) {
 	if err != nil {
 		fail(testName, err)
 	}
-	// The exisitng record count does not change.
+	// The existing record count does not change.
 	err = assertEqualInt(2500+500+5000, int(recordCount), "")
 	if err != nil {
 		fail(testName, err)
@@ -239,7 +239,7 @@ func inventoryCreateVolume(testName string) {
 	pass(testName)
 }
 
-// inventoryDelete verifies inverntory remov
+// inventoryDelete verifies inverntory remove
 func inventoryDelete(testName string) {
 
 }

@@ -216,7 +216,7 @@ func findConsolePodForNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Let the caller know we were successful.  The console pod
-	// is part of the repsonse in nci.
+	// is part of the response in nci.
 	SendResponseJSON(w, http.StatusOK, nci)
 	return
 }
