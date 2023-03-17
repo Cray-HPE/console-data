@@ -30,9 +30,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/lib/pq" //needed for DB stuff
 	"log"
 	"sync"
+
+	_ "github.com/lib/pq" //needed for DB stuff
 )
 
 // DB - the Database connection
@@ -86,19 +87,37 @@ func prepareDB() (err error) {
 }
 
 // acquireNodesOfType will get a set of nodes for a particular type
-func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
+func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNodeReplicas int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
 	errList = []string{}
 	acquired = []NodeConsoleInfo{}
-
-	// sql query for pulling records of a particular type
-	sqlStmt := `
+	var sqlStmt string
+	var rows *sql.Rows
+	var err error
+	// If only one console node replica exists, they must monitor the nodes it lives on.
+	if numNodeReplicas == 1 {
+		log.Printf("INFO: console-node replicas are %d, not filtering by node xname\n", numNodeReplicas)
+		// sql query for pulling records of a particular type
+		sqlStmt = `
 		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
 		from ownership
 		where node_class=$1 and console_pod_id is NULL
 		limit $2
 	`
+		rows, err = DB.Query(sqlStmt, nodeType, numNodes)
+	} else {
+		log.Printf("INFO: console-node replicas are %d, filtering by node xname\n", numNodeReplicas)
+		// filter based on node xname, do not monitor xname console-node pods are running on
+		sqlStmt = `
+		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
+		from ownership
+		where node_class=$1 and console_pod_id is NULL and node_name <> $2
+		limit $3
+	`
+		rows, err = DB.Query(sqlStmt, nodeType, nodeXname, numNodes)
+	}
+
 	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
-	rows, err := DB.Query(sqlStmt, nodeType, numNodes)
+
 	defer rows.Close()
 	if err != nil {
 		errMsg := fmt.Sprintf("WARN: dbConsolePodAcquireNodes: There is a SELECT error: %s", err)
@@ -131,11 +150,22 @@ func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []
 
 // dbConsolePodAcquireNodes will attempt to acquire the numbers of nodes requested by type.
 // All acquired nodes will be added to the NodeConsoleInfo array.  Any error(s) will be returned.
-func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
+func dbConsolePodAcquireNodes(
+	pod_id string,
+	numMtn,
+	numRvr int,
+	xname string,
+	numNodeReplicas int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
 
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
 		log.Printf("dbConsolePodAcquireNodes: the requested number of Mtn and Rvr was zero.  Returning.")
+		return 0, []NodeConsoleInfo{}, nil
+	}
+
+	// Exit quickly when numNodeReplicas is not valid
+	if numNodeReplicas <= 0 {
+		log.Printf("dbConsolePodAcquireNodes: numNodeReplicas is still not available. Returning\n")
 		return 0, []NodeConsoleInfo{}, nil
 	}
 
@@ -148,12 +178,12 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 	if numMtn > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d mtn nodes", numMtn)
 		// The mountain hardware may be classified as either 'Mountain' or 'Hill'
-		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn)
+		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn, xname, numNodeReplicas)
 
 		// if we don't have enough 'Mountain' nodes, look for 'Hill' nodes
 		if len(acquired) < numMtn {
 			log.Printf("dbConsolePodAcquireNodes: acquiring %d hill nodes", numMtn-len(acquired))
-			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
+			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired), xname, numNodeReplicas)
 			if len(newNodes) > 0 {
 				if len(nodes) > 0 {
 					nodes += fmt.Sprintf(", %s ", newNodes)
@@ -168,7 +198,7 @@ func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected i
 
 	if numRvr > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d river nodes", numRvr)
-		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr)
+		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr, xname, numNodeReplicas)
 		if len(newNodes) > 0 {
 			if len(nodes) > 0 {
 				nodes += fmt.Sprintf(", %s ", newNodes)
