@@ -48,7 +48,7 @@ func getConsoleNodeReplicas() (replicas int, err error) {
 	var replicasResp GetNodeReplicasResponse
 	json_err := json.Unmarshal(rd, &replicasResp)
 	if json_err != nil {
-		log.Printf("Error: There was an error while decoding the json data: %s\n", json_err)
+		log.Printf("Error: There was an error while decoding the JSON data: %s\n", json_err)
 		return -1, err
 	}
 
