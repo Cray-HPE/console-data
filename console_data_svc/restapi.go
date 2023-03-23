@@ -52,6 +52,7 @@ func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsole
 }
 
 // acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them to pod with current timestamp (called by console-node)
+// console-node will also provide the node alias and xname it is running on to filter for resiliency purposes.
 // pod_id will be stateful set named (node-1, node-1, node-x)
 // Give me up to 1k mtgn and 500 river.
 // Makes the assignments based on what is available.
@@ -59,8 +60,10 @@ func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsole
 // May return nothing in the vast majority of times.
 func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 	type ReqData struct {
-		NumMtn int `json:"nummtn"` // Requested number of Mountain nodes
-		NumRvr int `json:"numrvr"` // Requested number of River nodes
+		NumMtn int    `json:"nummtn"` // Requested number of Mountain nodes
+		NumRvr int    `json:"numrvr"` // Requested number of River nodes
+		Xname  string `json:"xname"`  // Xname of current node pod is running on
+		Alias  string `json:"alias"`  // Alias of current node pod is running on
 	}
 
 	pod_id := getField(r, 0)
@@ -105,7 +108,18 @@ func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ncisAcquired, err := dbConsolePodAcquireNodes(pod_id, reqData.NumMtn, reqData.NumRvr)
+	replicaCount, err := getConsoleNodeReplicas()
+	if err != nil {
+		log.Printf("Error: There was an error in getConsoleNodeReplicas() %s\n", err)
+	}
+
+	_, ncisAcquired, err := dbConsolePodAcquireNodes(
+		pod_id,
+		reqData.NumMtn,
+		reqData.NumRvr,
+		reqData.Xname,
+		replicaCount)
+
 	if err != nil {
 		log.Printf("There was an error while acquiring nodes: %s\n", err)
 		var body = BaseResponse{

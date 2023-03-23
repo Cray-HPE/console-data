@@ -1,7 +1,7 @@
 //
 //  MIT License
 //
-//  (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+//  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
@@ -30,6 +30,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"regexp"
@@ -156,4 +157,38 @@ func NotImplemented(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SendResponseJSON(w, http.StatusNotImplemented, body)
+}
+
+// Helper function to execute an http command
+func getURL(URL string, requestHeaders map[string]string) ([]byte, int, error) {
+	var err error = nil
+	log.Printf("getURL URL: %s\n", URL)
+	req, err := http.NewRequest("GET", URL, nil)
+	if err != nil {
+		// handle error
+		log.Printf("getURL Error creating new request to %s: %s", URL, err)
+		return nil, -1, err
+	}
+	if requestHeaders != nil {
+		for k, v := range requestHeaders {
+			req.Header.Add(k, v)
+		}
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		// handle error
+		log.Printf("getURL Error on request to %s: %s", URL, err)
+		return nil, -1, err
+	}
+	log.Printf("getURL Response Status code: %d\n", resp.StatusCode)
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		// handle error
+		log.Printf("Error reading response: %s", err)
+		return nil, resp.StatusCode, err
+	}
+	// NOTE: Dumping entire response clogs up the log file but keep for debugging
+	//fmt.Printf("Data: %s\n", data)
+	return data, resp.StatusCode, err
 }
