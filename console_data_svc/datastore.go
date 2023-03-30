@@ -94,7 +94,7 @@ func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNode
 	var rows *sql.Rows
 	var err error
 	// If only one console node replica exists, they must monitor the nodes it lives on.
-	if numNodeReplicas == 1 {
+	if numNodeReplicas <= 1 {
 		log.Printf("INFO: console-node replicas are %d, not filtering by node xname\n", numNodeReplicas)
 		// sql query for pulling records of a particular type
 		sqlStmt = `
@@ -160,12 +160,6 @@ func dbConsolePodAcquireNodes(
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
 		log.Printf("dbConsolePodAcquireNodes: the requested number of Mtn and Rvr was zero.  Returning.")
-		return 0, []NodeConsoleInfo{}, nil
-	}
-
-	// Exit quickly when numNodeReplicas is not valid
-	if numNodeReplicas <= 0 {
-		log.Printf("dbConsolePodAcquireNodes: numNodeReplicas is still not available. Returning\n")
 		return 0, []NodeConsoleInfo{}, nil
 	}
 
@@ -385,7 +379,7 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 // to this console pod and remove the node from the ncis list.
 // Any nodes not assigned to the console pod will remain in ncis.
 // Any error(s) will be returned.
-func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
+func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHeartBeat) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
 
 	// Update all pods found by name and console pod ID.
 	// All errors are returned.
@@ -401,7 +395,12 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
 	`
-	for _, nci := range *ncis {
+	for _, nci := range heartBeatResponse.currNodes {
+		// Check if this node is monitoring itself
+		if nci.NodeName == heartBeatResponse.PodLocation {
+			notUpdated = append(notUpdated, nci)
+		}
+
 		result, err := DB.Exec(sqlStmt, nci.NodeName, pod_id)
 		if err != nil {
 			errMsg := fmt.Sprintf("WARN: dbConsolePodHeartbeat: There is an UPDATE error: %s", err)

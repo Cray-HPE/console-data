@@ -46,6 +46,11 @@ type NodeConsoleInfo struct {
 	NodeConsoleName string `json:"nodeconsolename"` // the pod console
 }
 
+type nodeConsoleInfoHeartBeat struct {
+	currNodes   []NodeConsoleInfo
+	PodLocation string // location of the current node pod in kubernetes
+}
+
 func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsoleInfo {
 	return NodeConsoleInfo{NodeName: nodeName, BmcName: bmcName, BmcFqdn: bmcFqdn,
 		Class: class, NID: nid, Role: role}
@@ -170,8 +175,8 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("request data: %s\n", string(reqBody))
 
-	var ncis []NodeConsoleInfo
-	err = json.Unmarshal(reqBody, &ncis)
+	var heartBeatResponse nodeConsoleInfoHeartBeat
+	err = json.Unmarshal(reqBody, &heartBeatResponse)
 	if err != nil {
 		log.Printf("There was an error while decoding the json data: %s\n", err)
 		var body = BaseResponse{
@@ -181,7 +186,7 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, notUpdated, err := dbConsolePodHeartbeat(pod_id, &ncis)
+	_, notUpdated, err := dbConsolePodHeartbeat(pod_id, &heartBeatResponse)
 	if err != nil {
 		log.Printf("There was an error while trying to update heartbeat data for console pod %s.  Error: %s\n", pod_id, err)
 		var body = BaseResponse{
