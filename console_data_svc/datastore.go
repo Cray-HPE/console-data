@@ -94,7 +94,8 @@ func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNode
 	var rows *sql.Rows
 	var err error
 	// If only one console node replica exists, they must monitor the nodes it lives on.
-	if numNodeReplicas <= 1 {
+	// If NodeXname is not specified, location data was not found so do not filter.
+	if numNodeReplicas <= 1 || nodeXname == "" {
 		log.Printf("INFO: console-node replicas are %d, not filtering by node xname\n", numNodeReplicas)
 		// sql query for pulling records of a particular type
 		sqlStmt = `
@@ -104,7 +105,7 @@ func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNode
 		limit $2
 	`
 		rows, err = DB.Query(sqlStmt, nodeType, numNodes)
-	} else {
+	} else if nodeXname != "" {
 		log.Printf("INFO: console-node replicas are %d, filtering by node xname\n", numNodeReplicas)
 		// filter based on node xname, do not monitor xname console-node pods are running on
 		sqlStmt = `
