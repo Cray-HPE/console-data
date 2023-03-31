@@ -396,7 +396,7 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
 	`
-	for _, nci := range heartBeatResponse.currNodes {
+	for _, nci := range heartBeatResponse.CurrNodes {
 		log.Printf("current nci - %+v\n", nci)
 		// Check if this node is monitoring itself
 		if nci.NodeName == heartBeatResponse.PodLocation {
