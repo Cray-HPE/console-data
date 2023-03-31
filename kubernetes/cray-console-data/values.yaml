@@ -37,7 +37,7 @@ cray-service:
     cray-console-data:
       name: console-data
       image:
-        repository: artifactory.algol60.net/csm-docker/stable/cray-console-data
+        repository: artifactory.algol60.net/csm-docker/unstable/cray-console-data
         # tag defaults to chart appVersion
       ports:
         - name: http

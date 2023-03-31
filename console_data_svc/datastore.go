@@ -397,8 +397,10 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 		where node_name = $1 and console_pod_id = $2
 	`
 	for _, nci := range heartBeatResponse.currNodes {
+		log.Printf("current nci - %+v\n", nci)
 		// Check if this node is monitoring itself
 		if nci.NodeName == heartBeatResponse.PodLocation {
+			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
 			notUpdated = append(notUpdated, nci)
 		}
 
