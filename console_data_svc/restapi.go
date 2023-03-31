@@ -113,17 +113,12 @@ func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	replicaCount, err := getConsoleNodeReplicas()
-	if err != nil {
-		log.Printf("Error: There was an error in getConsoleNodeReplicas() %s\n", err)
-	}
-
 	_, ncisAcquired, err := dbConsolePodAcquireNodes(
 		pod_id,
 		reqData.NumMtn,
 		reqData.NumRvr,
 		reqData.Xname,
-		replicaCount)
+	)
 
 	if err != nil {
 		log.Printf("There was an error while acquiring nodes: %s\n", err)
