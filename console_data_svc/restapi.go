@@ -47,7 +47,7 @@ type NodeConsoleInfo struct {
 }
 
 type nodeConsoleInfoHeartBeat struct {
-	currNodes   []NodeConsoleInfo
+	CurrNodes   []NodeConsoleInfo
 	PodLocation string // location of the current node pod in kubernetes
 }
 
@@ -177,6 +177,8 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	var heartBeatResponse nodeConsoleInfoHeartBeat
 	err = json.Unmarshal(reqBody, &heartBeatResponse)
+	log.Printf("heartBeatResponse: %+v\n", heartBeatResponse)
+
 	if err != nil {
 		log.Printf("There was an error while decoding the json data: %s\n", err)
 		var body = BaseResponse{
@@ -185,7 +187,6 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 		SendResponseJSON(w, http.StatusBadRequest, body)
 		return
 	}
-
 	_, notUpdated, err := dbConsolePodHeartbeat(pod_id, &heartBeatResponse)
 	if err != nil {
 		log.Printf("There was an error while trying to update heartbeat data for console pod %s.  Error: %s\n", pod_id, err)
