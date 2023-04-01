@@ -42,6 +42,11 @@ var DB *sql.DB
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
 
+// Track to see if nodes are disconnecting and reconnecting.
+var selfMonitorCounter int = 0
+
+const selfMonitorMax int = 3
+
 // Initialize the DB connection.
 func initDBConn() {
 
@@ -400,7 +405,12 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 		// Check if this node is monitoring itself
 		if nci.NodeName == heartBeatResponse.PodLocation {
 			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
-			notUpdated = append(notUpdated, nci)
+			if selfMonitorCounter <= selfMonitorMax {
+				notUpdated = append(notUpdated, nci)
+				selfMonitorCounter += 1
+			} else {
+				break
+			}
 		}
 
 		result, err := DB.Exec(sqlStmt, nci.NodeName, pod_id)
