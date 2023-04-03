@@ -117,7 +117,6 @@ func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 		pod_id,
 		reqData.NumMtn,
 		reqData.NumRvr,
-		reqData.Xname,
 	)
 
 	if err != nil {
