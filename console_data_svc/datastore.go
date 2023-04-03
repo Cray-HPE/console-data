@@ -42,6 +42,11 @@ var DB *sql.DB
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
 
+// Track to see if nodes are disconnecting and reconnecting.
+var selfMonitorCounter int = 0
+
+const selfMonitorMax int = 2
+
 // Initialize the DB connection.
 func initDBConn() {
 
@@ -87,34 +92,18 @@ func prepareDB() (err error) {
 }
 
 // acquireNodesOfType will get a set of nodes for a particular type
-func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNodeReplicas int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
+func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
 	errList = []string{}
 	acquired = []NodeConsoleInfo{}
-	var sqlStmt string
-	var rows *sql.Rows
-	var err error
-	// If only one console node replica exists, they must monitor the nodes it lives on.
-	if numNodeReplicas == 1 {
-		log.Printf("INFO: console-node replicas are %d, not filtering by node xname\n", numNodeReplicas)
-		// sql query for pulling records of a particular type
-		sqlStmt = `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL
-		limit $2
+
+	// sql query for pulling records of a particular type
+	sqlStmt := `
+	select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
+	from ownership
+	where node_class=$1 and console_pod_id is NULL
+	limit $2
 	`
-		rows, err = DB.Query(sqlStmt, nodeType, numNodes)
-	} else {
-		log.Printf("INFO: console-node replicas are %d, filtering by node xname\n", numNodeReplicas)
-		// filter based on node xname, do not monitor xname console-node pods are running on
-		sqlStmt = `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL and node_name <> $2
-		limit $3
-	`
-		rows, err = DB.Query(sqlStmt, nodeType, nodeXname, numNodes)
-	}
+	rows, err := DB.Query(sqlStmt, nodeType, numNodes)
 
 	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
 
@@ -153,19 +142,11 @@ func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNode
 func dbConsolePodAcquireNodes(
 	pod_id string,
 	numMtn,
-	numRvr int,
-	xname string,
-	numNodeReplicas int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
+	numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
 
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
 		log.Printf("dbConsolePodAcquireNodes: the requested number of Mtn and Rvr was zero.  Returning.")
-		return 0, []NodeConsoleInfo{}, nil
-	}
-
-	// Exit quickly when numNodeReplicas is not valid
-	if numNodeReplicas <= 0 {
-		log.Printf("dbConsolePodAcquireNodes: numNodeReplicas is still not available. Returning\n")
 		return 0, []NodeConsoleInfo{}, nil
 	}
 
@@ -178,12 +159,12 @@ func dbConsolePodAcquireNodes(
 	if numMtn > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d mtn nodes", numMtn)
 		// The mountain hardware may be classified as either 'Mountain' or 'Hill'
-		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn, xname, numNodeReplicas)
+		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn)
 
 		// if we don't have enough 'Mountain' nodes, look for 'Hill' nodes
 		if len(acquired) < numMtn {
 			log.Printf("dbConsolePodAcquireNodes: acquiring %d hill nodes", numMtn-len(acquired))
-			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired), xname, numNodeReplicas)
+			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
 			if len(newNodes) > 0 {
 				if len(nodes) > 0 {
 					nodes += fmt.Sprintf(", %s ", newNodes)
@@ -198,7 +179,7 @@ func dbConsolePodAcquireNodes(
 
 	if numRvr > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d river nodes", numRvr)
-		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr, xname, numNodeReplicas)
+		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr)
 		if len(newNodes) > 0 {
 			if len(nodes) > 0 {
 				nodes += fmt.Sprintf(", %s ", newNodes)
@@ -384,8 +365,10 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 // dbConsolePodHeartbeat will update the heartbeat for all nodes assigned
 // to this console pod and remove the node from the ncis list.
 // Any nodes not assigned to the console pod will remain in ncis.
+// Detects whether console-node is monitoring itself and if so will attempt to
+// push back the self assigned node to the notUpdatedNodes list.
 // Any error(s) will be returned.
-func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
+func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHeartBeat) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
 
 	// Update all pods found by name and console pod ID.
 	// All errors are returned.
@@ -401,7 +384,19 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
 	`
-	for _, nci := range *ncis {
+	for _, nci := range heartBeatResponse.CurrNodes {
+		// Check if this node is monitoring itself
+		if nci.NodeName == heartBeatResponse.PodLocation {
+			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
+			if selfMonitorCounter <= selfMonitorMax {
+				log.Printf("INFO: pushing %s back into the notUpdated pool\n", nci.NodeName)
+				notUpdated = append(notUpdated, nci)
+				selfMonitorCounter += 1
+			} else {
+				break
+			}
+		}
+
 		result, err := DB.Exec(sqlStmt, nci.NodeName, pod_id)
 		if err != nil {
 			errMsg := fmt.Sprintf("WARN: dbConsolePodHeartbeat: There is an UPDATE error: %s", err)
