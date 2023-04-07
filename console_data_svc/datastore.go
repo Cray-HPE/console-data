@@ -59,7 +59,8 @@ var mu sync.Mutex
 // Track how many console-pods are currently running.
 var consolePodCache *ConsolePodsCache = NewConsolePodsCache()
 
-const consolePodCacheRefreshInterval int = 1
+// Only call the database every few minutes so that heartbeat does not overload the database.
+const consolePodCacheRefreshInterval int = 5
 
 // Only one console-node pod can monitor itself if it is the only one running.
 const selfMonitorMax int = 1
@@ -417,13 +418,11 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Find current number of consolepods active in the db. If older than 10 minutes then refresh.
+	// Find current number of consolepods active in the db, refresh cache only when needed.
 	currentTimestamp := time.Now().Unix()
-	log.Printf("DEBUG: currentTimestamp %d\n", currentTimestamp)
-	log.Printf("DEBUG: consolePodCache is %+v\n", consolePodCache)
 	timeDifference := time.Duration(currentTimestamp - consolePodCache.timestamp).Minutes()
 	if timeDifference >= time.Duration(consolePodCacheRefreshInterval).Minutes() {
-		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing")
+		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing.")
 		consolePodCache.findUniqueConsolePods()
 	}
 
