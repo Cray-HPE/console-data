@@ -1,7 +1,7 @@
 //
 //  MIT License
 //
-//  (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+//  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
@@ -55,7 +55,7 @@ func main() {
 	// Enable debug logging if requested.
 	debugLog.Init()
 
-	log.Printf("Console data serivce starting")
+	log.Printf("Console data service starting")
 
 	// Setup a channel to wait for the os to tell us to stop.
 	// NOTE - This must be set up before initializing anything that needs

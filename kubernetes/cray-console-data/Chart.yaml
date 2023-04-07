@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,7 @@
 #
 apiVersion: v2
 name: cray-console-data
-version: 0.0.0
+version: 0.0.0-chart
 description: Kubernetes resources for console-data
 keywords:
   - cray-console
@@ -35,12 +35,15 @@ dependencies:
   - name: cray-service
     version: ^8.2.0
     repository: "https://artifactory.algol60.net/artifactory/csm-helm-charts/"
+  - name: cray-postgresql
+    version: ^1.0.0
+    repository: "https://artifactory.algol60.net/artifactory/csm-helm-charts/"
 maintainers:
   - name: dlaine-hpe
     email: laine@hpe.com
-appVersion: 0.0.0
+appVersion: 0.0.0-image
 annotations:
   artifacthub.io/images: |
     - name: cray-console-data
-      image: artifactory.algol60.net/csm-docker/stable/cray-console-data:0.0.0
+      image: artifactory.algol60.net/csm-docker/S-T-A-B-L-E/cray-console-data:0.0.0-image
   artifacthub.io/license: MIT

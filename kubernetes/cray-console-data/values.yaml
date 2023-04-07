@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -37,7 +37,7 @@ cray-service:
     cray-console-data:
       name: console-data
       image:
-        repository: artifactory.algol60.net/csm-docker/stable/cray-console-data
+        repository: artifactory.algol60.net/csm-docker/S-T-A-B-L-E/cray-console-data
         # tag defaults to chart appVersion
       ports:
         - name: http
@@ -73,16 +73,10 @@ cray-service:
           secretKeyRef:
             name: console.cray-console-data-postgres.credentials
             key: password
-
-  sqlCluster:
-    enabled: true
-    instanceCount: 3
-    postgresVersion: "11"
-    volumeSize: 2Gi
-    users:
-      console: []
-    databases:
-      service_db: console
+      - name: POSTGRES_HOST
+        value: cray-console-data-postgres
+      - name: POSTGRES_PORT
+        value: "5432"
 
   ingress:
     enabled: true
@@ -90,3 +84,14 @@ cray-service:
     uri: " "
   strategy:
     type: Recreate
+
+cray-postgresql:
+  nameOverride: cray-console-data
+  sqlCluster:
+    enabled: true
+    instanceCount: 3
+    volumeSize: 2Gi
+    users:
+      console: []
+    databases:
+      service_db: console
