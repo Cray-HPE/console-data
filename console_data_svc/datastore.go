@@ -32,9 +32,23 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	_ "github.com/lib/pq" //needed for DB stuff
 )
+
+// Cache to store the number of unique console-pods currently monitoring nodes.
+type ConsolePodsCache struct {
+	numberOfPods int
+	timestamp    int64
+}
+
+func NewConsolePodsCache() *ConsolePodsCache {
+	return &ConsolePodsCache{
+		numberOfPods: 0,
+		timestamp:    0,
+	}
+}
 
 // DB - the Database connection
 var DB *sql.DB
@@ -42,10 +56,14 @@ var DB *sql.DB
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
 
-// Track to see if nodes are disconnecting and reconnecting.
-var selfMonitorCounter int = 0
+// Track how many console-pods are currently running.
+var consolePodCache *ConsolePodsCache = NewConsolePodsCache()
 
-const selfMonitorMax int = 2
+// Only call the database every few minutes so that heartbeat does not overload the database.
+const consolePodCacheRefreshInterval int = 5
+
+// Only one console-node pod can monitor itself if it is the only one running.
+const selfMonitorMax int = 1
 
 // Initialize the DB connection.
 func initDBConn() {
@@ -89,6 +107,29 @@ func prepareDB() (err error) {
 		return err
 	}
 	return nil
+}
+
+// Queries the database to find number of unique console-pod ids and caches the results with a timestamp.
+func (podsCache *ConsolePodsCache) findUniqueConsolePods() {
+	sqlStmt := `select distinct console_pod_id from ownership where console_pod_id is not NULL`
+	result, err := DB.Exec(sqlStmt)
+
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a SELECT error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+
+	numOfPods, err := result.RowsAffected()
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a rowsAffected error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+	// Store the values in the cache
+	podsCache.numberOfPods = int(numOfPods)
+	podsCache.timestamp = time.Now().Unix()
+	log.Printf("INFO: consolePodCache is updated with numOfPods: %d timestamp: %d", podsCache.numberOfPods, podsCache.timestamp)
 }
 
 // acquireNodesOfType will get a set of nodes for a particular type
@@ -376,6 +417,15 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 	// updates that can be completed will immediately complete.
 	mu.Lock()
 	defer mu.Unlock()
+
+	// Find current number of consolepods active in the db, refresh cache only when needed.
+	currentTimestamp := time.Now().Unix()
+	timeDifference := time.Duration(currentTimestamp - consolePodCache.timestamp).Minutes()
+	if timeDifference >= time.Duration(consolePodCacheRefreshInterval).Minutes() {
+		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing.")
+		consolePodCache.findUniqueConsolePods()
+	}
+
 	var errList []string
 	rowsAffected = 0
 	notUpdated = []NodeConsoleInfo{}
@@ -388,10 +438,9 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 		// Check if this node is monitoring itself
 		if nci.NodeName == heartBeatResponse.PodLocation {
 			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
-			if selfMonitorCounter <= selfMonitorMax {
+			if consolePodCache.numberOfPods > selfMonitorMax {
 				log.Printf("INFO: pushing %s back into the notUpdated pool\n", nci.NodeName)
 				notUpdated = append(notUpdated, nci)
-				selfMonitorCounter += 1
 			} else {
 				break
 			}
