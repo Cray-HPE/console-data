@@ -30,16 +30,40 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/lib/pq" //needed for DB stuff
 	"log"
 	"sync"
+	"time"
+
+	_ "github.com/lib/pq" //needed for DB stuff
 )
+
+// Cache to store the number of unique console-pods currently monitoring nodes.
+type ConsolePodsCache struct {
+	numberOfPods int
+	timestamp    int64
+}
+
+func NewConsolePodsCache() *ConsolePodsCache {
+	return &ConsolePodsCache{
+		numberOfPods: 0,
+		timestamp:    0,
+	}
+}
 
 // DB - the Database connection
 var DB *sql.DB
 
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
+
+// Track how many console-pods are currently running.
+var consolePodCache *ConsolePodsCache = NewConsolePodsCache()
+
+// Only call the database every few minutes so that heartbeat does not overload the database.
+const consolePodCacheRefreshInterval int = 5
+
+// Only one console-node pod can monitor itself if it is the only one running.
+const selfMonitorMax int = 1
 
 // Initialize the DB connection.
 func initDBConn() {
@@ -69,11 +93,11 @@ func prepareDB() (err error) {
 	create_table := `
 	CREATE TABLE IF NOT EXISTS ownership (
 		node_name VARCHAR( 50 )  PRIMARY KEY NOT NULL CHECK (node_name <> ''),
-        node_bmc_name VARCHAR( 50 )  NOT NULL CHECK (node_bmc_name <> ''),
-        node_bmc_fqdn VARCHAR( 50 )  NOT NULL CHECK (node_bmc_fqdn <> ''),
-        node_class VARCHAR( 50 )  NOT NULL CHECK (node_class <> ''),
-        node_nid_number INTEGER  NOT NULL CHECK (node_nid_number <> 0),
-        node_role VARCHAR( 50 )  NOT NULL CHECK (node_role <> ''),
+		node_bmc_name VARCHAR( 50 )  NOT NULL CHECK (node_bmc_name <> ''),
+		node_bmc_fqdn VARCHAR( 50 )  NOT NULL CHECK (node_bmc_fqdn <> ''),
+		node_class VARCHAR( 50 )  NOT NULL CHECK (node_class <> ''),
+		node_nid_number INTEGER  NOT NULL CHECK (node_nid_number <> 0),
+		node_role VARCHAR( 50 )  NOT NULL CHECK (node_role <> ''),
 		console_pod_id VARCHAR( 50 ),
 		last_updated TIMESTAMP,
 		heartbeat TIMESTAMP
@@ -85,20 +109,45 @@ func prepareDB() (err error) {
 	return nil
 }
 
-// aquireNodesOfType will get a set of nodes for a particular type
+// Queries the database to find number of unique console-pod ids and caches the results with a timestamp.
+func (podsCache *ConsolePodsCache) findUniqueConsolePods() {
+	sqlStmt := `select distinct console_pod_id from ownership where console_pod_id is not NULL`
+	result, err := DB.Exec(sqlStmt)
+
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a SELECT error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+
+	numOfPods, err := result.RowsAffected()
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a rowsAffected error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+	// Store the values in the cache
+	podsCache.numberOfPods = int(numOfPods)
+	podsCache.timestamp = time.Now().Unix()
+	log.Printf("INFO: consolePodCache is updated with numOfPods: %d timestamp: %d", podsCache.numberOfPods, podsCache.timestamp)
+}
+
+// acquireNodesOfType will get a set of nodes for a particular type
 func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
 	errList = []string{}
 	acquired = []NodeConsoleInfo{}
 
 	// sql query for pulling records of a particular type
 	sqlStmt := `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL
-		limit $2
+	select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
+	from ownership
+	where node_class=$1 and console_pod_id is NULL
+	limit $2
 	`
-	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
 	rows, err := DB.Query(sqlStmt, nodeType, numNodes)
+
+	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
+
 	defer rows.Close()
 	if err != nil {
 		errMsg := fmt.Sprintf("WARN: dbConsolePodAcquireNodes: There is a SELECT error: %s", err)
@@ -131,7 +180,10 @@ func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []
 
 // dbConsolePodAcquireNodes will attempt to acquire the numbers of nodes requested by type.
 // All acquired nodes will be added to the NodeConsoleInfo array.  Any error(s) will be returned.
-func dbConsolePodAcquireNodes(pod_id string, numMtn, numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
+func dbConsolePodAcquireNodes(
+	pod_id string,
+	numMtn,
+	numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
 
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
@@ -225,27 +277,27 @@ func dbUpdateNodes(ncis *[]NodeConsoleInfo) (rowsInserted int64, err error) {
 	var errList []string
 	rowsInserted = 0
 	sql := `
-        insert into ownership (node_name,
-          node_bmc_name,
-          node_bmc_fqdn,
-          node_class,
-          node_nid_number,
-          node_role,
-          console_pod_id,
-          last_updated,
-	      heartbeat)
-        values
-          ($1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          NULL,
-          now(),
-	      NULL)
-        on conflict (node_name) do nothing
-    `
+		insert into ownership (node_name,
+		  node_bmc_name,
+		  node_bmc_fqdn,
+		  node_class,
+		  node_nid_number,
+		  node_role,
+		  console_pod_id,
+		  last_updated,
+		  heartbeat)
+		values
+		  ($1,
+		  $2,
+		  $3,
+		  $4,
+		  $5,
+		  $6,
+		  NULL,
+		  now(),
+		  NULL)
+		on conflict (node_name) do nothing
+	`
 	for _, nci := range *ncis {
 		result, err := DB.Exec(sql,
 			nci.NodeName,
@@ -313,8 +365,8 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 	// Look for the node and if found set *nci.NodeConsoleName = console_pod_id
 	// Return any error found.
 	sqlStmt := `
-        select console_pod_id from ownership where node_name=$1
-    `
+		select console_pod_id from ownership where node_name=$1
+	`
 	if nci == nil || nci.NodeName == "" {
 		return errors.New("Nil or empty NodeName.")
 	}
@@ -354,8 +406,10 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 // dbConsolePodHeartbeat will update the heartbeat for all nodes assigned
 // to this console pod and remove the node from the ncis list.
 // Any nodes not assigned to the console pod will remain in ncis.
+// Detects whether console-node is monitoring itself and if so will attempt to
+// push back the self assigned node to the notUpdatedNodes list.
 // Any error(s) will be returned.
-func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
+func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHeartBeat) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
 
 	// Update all pods found by name and console pod ID.
 	// All errors are returned.
@@ -363,6 +417,15 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 	// updates that can be completed will immediately complete.
 	mu.Lock()
 	defer mu.Unlock()
+
+	// Find current number of consolepods active in the db, refresh cache only when needed.
+	currentTimestamp := time.Now().Unix()
+	timeDifference := time.Duration(currentTimestamp - consolePodCache.timestamp).Minutes()
+	if timeDifference >= time.Duration(consolePodCacheRefreshInterval).Minutes() {
+		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing.")
+		consolePodCache.findUniqueConsolePods()
+	}
+
 	var errList []string
 	rowsAffected = 0
 	notUpdated = []NodeConsoleInfo{}
@@ -371,7 +434,18 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
 	`
-	for _, nci := range *ncis {
+	for _, nci := range heartBeatResponse.CurrNodes {
+		// Check if this node is monitoring itself
+		if nci.NodeName == heartBeatResponse.PodLocation {
+			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
+			if consolePodCache.numberOfPods > selfMonitorMax {
+				log.Printf("INFO: pushing %s back into the notUpdated pool\n", nci.NodeName)
+				notUpdated = append(notUpdated, nci)
+			} else {
+				break
+			}
+		}
+
 		result, err := DB.Exec(sqlStmt, nci.NodeName, pod_id)
 		if err != nil {
 			errMsg := fmt.Sprintf("WARN: dbConsolePodHeartbeat: There is an UPDATE error: %s", err)
@@ -394,7 +468,7 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 	}
 	// Let the caller see the list that was not updated (if any).
 	for _, nci := range notUpdated {
-		log.Printf("nci not updaed: %s", nci.NodeName)
+		log.Printf("nci not updated: %s", nci.NodeName)
 	}
 
 	if len(errList) > 0 {

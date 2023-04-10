@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2023-03-30
+### Changed
+- CASMCMS-8456 - Update chart to use new postgres operator
+- CASMCSM-7167 - Adding xname filtering so that console-node pods do not monitor the machines they are running on.
 ## [1.6.3] - 2022-02-24
 ### Changed
 - CASMCMS-8423 - linting changes due to new version of gofmt.
@@ -15,11 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+ - CASMCMS-8252: Enabled building of unstable artifacts
+ - CASMCMS-8252: Updated header of update_versions.conf to reflect new tool options
+
+### Fixed
  - CASMCMS-8156: Fix bug in handling Hill nodes.
+ - Spelling corrections.
+ - CASMCMS-8252: Update Chart with correct image and chart version strings during builds.
 
 ## [1.6.0] - 2022-08-04
 ### Changed
- - CASMINST-5145: Update the base service chart to pull in necessary changes for updgraded istio
+ - CASMINST-5145: Update the base service chart to pull in necessary changes for upgraded istio
  - CASMCMS-8140: Fix handling Hill nodes.
 
 ## [1.4.0] - 2022-07-12

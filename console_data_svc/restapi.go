@@ -46,12 +46,18 @@ type NodeConsoleInfo struct {
 	NodeConsoleName string `json:"nodeconsolename"` // the pod console
 }
 
+type nodeConsoleInfoHeartBeat struct {
+	CurrNodes   []NodeConsoleInfo
+	PodLocation string // location of the current node pod in kubernetes
+}
+
 func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsoleInfo {
 	return NodeConsoleInfo{NodeName: nodeName, BmcName: bmcName, BmcFqdn: bmcFqdn,
 		Class: class, NID: nid, Role: role}
 }
 
 // acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them to pod with current timestamp (called by console-node)
+// console-node will also provide the node alias and xname it is running on to filter for resiliency purposes.
 // pod_id will be stateful set named (node-1, node-1, node-x)
 // Give me up to 1k mtgn and 500 river.
 // Makes the assignments based on what is available.
@@ -59,8 +65,10 @@ func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsole
 // May return nothing in the vast majority of times.
 func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 	type ReqData struct {
-		NumMtn int `json:"nummtn"` // Requested number of Mountain nodes
-		NumRvr int `json:"numrvr"` // Requested number of River nodes
+		NumMtn int    `json:"nummtn"` // Requested number of Mountain nodes
+		NumRvr int    `json:"numrvr"` // Requested number of River nodes
+		Xname  string `json:"xname"`  // Xname of current node pod is running on
+		Alias  string `json:"alias"`  // Alias of current node pod is running on
 	}
 
 	pod_id := getField(r, 0)
@@ -105,7 +113,12 @@ func consolePodAcquireNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ncisAcquired, err := dbConsolePodAcquireNodes(pod_id, reqData.NumMtn, reqData.NumRvr)
+	_, ncisAcquired, err := dbConsolePodAcquireNodes(
+		pod_id,
+		reqData.NumMtn,
+		reqData.NumRvr,
+	)
+
 	if err != nil {
 		log.Printf("There was an error while acquiring nodes: %s\n", err)
 		var body = BaseResponse{
@@ -156,8 +169,10 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("request data: %s\n", string(reqBody))
 
-	var ncis []NodeConsoleInfo
-	err = json.Unmarshal(reqBody, &ncis)
+	var heartBeatResponse nodeConsoleInfoHeartBeat
+	err = json.Unmarshal(reqBody, &heartBeatResponse)
+	log.Printf("heartBeatResponse: %+v\n", heartBeatResponse)
+
 	if err != nil {
 		log.Printf("There was an error while decoding the json data: %s\n", err)
 		var body = BaseResponse{
@@ -166,8 +181,7 @@ func consolePodHeartbeat(w http.ResponseWriter, r *http.Request) {
 		SendResponseJSON(w, http.StatusBadRequest, body)
 		return
 	}
-
-	_, notUpdated, err := dbConsolePodHeartbeat(pod_id, &ncis)
+	_, notUpdated, err := dbConsolePodHeartbeat(pod_id, &heartBeatResponse)
 	if err != nil {
 		log.Printf("There was an error while trying to update heartbeat data for console pod %s.  Error: %s\n", pod_id, err)
 		var body = BaseResponse{
@@ -216,7 +230,7 @@ func findConsolePodForNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Let the caller know we were successful.  The console pod
-	// is part of the repsonse in nci.
+	// is part of the response in nci.
 	SendResponseJSON(w, http.StatusOK, nci)
 	return
 }
