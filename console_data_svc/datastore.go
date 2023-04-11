@@ -32,15 +32,38 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	_ "github.com/lib/pq" //needed for DB stuff
 )
+
+// Cache to store the number of unique console-pods currently monitoring nodes.
+type ConsolePodsCache struct {
+	numberOfPods int
+	timestamp    int64
+}
+
+func NewConsolePodsCache() *ConsolePodsCache {
+	return &ConsolePodsCache{
+		numberOfPods: 0,
+		timestamp:    0,
+	}
+}
 
 // DB - the Database connection
 var DB *sql.DB
 
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
+
+// Track how many console-pods are currently running.
+var consolePodCache *ConsolePodsCache = NewConsolePodsCache()
+
+// Only call the database every few minutes so that heartbeat does not overload the database.
+const consolePodCacheRefreshInterval int = 5
+
+// Only one console-node pod can monitor itself if it is the only one running.
+const selfMonitorMax int = 1
 
 // Initialize the DB connection.
 func initDBConn() {
@@ -86,35 +109,42 @@ func prepareDB() (err error) {
 	return nil
 }
 
+// Queries the database to find number of unique console-pod ids and caches the results with a timestamp.
+func (podsCache *ConsolePodsCache) findUniqueConsolePods() {
+	sqlStmt := `select distinct console_pod_id from ownership where console_pod_id is not NULL`
+	result, err := DB.Exec(sqlStmt)
+
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a SELECT error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+
+	numOfPods, err := result.RowsAffected()
+	if err != nil {
+		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a rowsAffected error: %s", err.Error())
+		log.Printf(errMsg)
+		return
+	}
+	// Store the values in the cache
+	podsCache.numberOfPods = int(numOfPods)
+	podsCache.timestamp = time.Now().Unix()
+	log.Printf("INFO: consolePodCache is updated with numOfPods: %d timestamp: %d", podsCache.numberOfPods, podsCache.timestamp)
+}
+
 // acquireNodesOfType will get a set of nodes for a particular type
-func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNodeReplicas int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
+func acquireNodesOfType(nodeType string, numNodes int) (nodes string, errList []string, acquired []NodeConsoleInfo) {
 	errList = []string{}
 	acquired = []NodeConsoleInfo{}
-	var sqlStmt string
-	var rows *sql.Rows
-	var err error
-	// If only one console node replica exists, they must monitor the nodes it lives on.
-	if numNodeReplicas == 1 {
-		log.Printf("INFO: console-node replicas are %d, not filtering by node xname\n", numNodeReplicas)
-		// sql query for pulling records of a particular type
-		sqlStmt = `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL
-		limit $2
+
+	// sql query for pulling records of a particular type
+	sqlStmt := `
+	select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
+	from ownership
+	where node_class=$1 and console_pod_id is NULL
+	limit $2
 	`
-		rows, err = DB.Query(sqlStmt, nodeType, numNodes)
-	} else {
-		log.Printf("INFO: console-node replicas are %d, filtering by node xname\n", numNodeReplicas)
-		// filter based on node xname, do not monitor xname console-node pods are running on
-		sqlStmt = `
-		select node_name, node_bmc_name, node_bmc_fqdn, node_class, node_nid_number, node_role
-		from ownership
-		where node_class=$1 and console_pod_id is NULL and node_name <> $2
-		limit $3
-	`
-		rows, err = DB.Query(sqlStmt, nodeType, nodeXname, numNodes)
-	}
+	rows, err := DB.Query(sqlStmt, nodeType, numNodes)
 
 	log.Printf("  Running query with type:%s, numNodes:%d", nodeType, numNodes)
 
@@ -153,19 +183,11 @@ func acquireNodesOfType(nodeType string, numNodes int, nodeXname string, numNode
 func dbConsolePodAcquireNodes(
 	pod_id string,
 	numMtn,
-	numRvr int,
-	xname string,
-	numNodeReplicas int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
+	numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
 
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
 		log.Printf("dbConsolePodAcquireNodes: the requested number of Mtn and Rvr was zero.  Returning.")
-		return 0, []NodeConsoleInfo{}, nil
-	}
-
-	// Exit quickly when numNodeReplicas is not valid
-	if numNodeReplicas <= 0 {
-		log.Printf("dbConsolePodAcquireNodes: numNodeReplicas is still not available. Returning\n")
 		return 0, []NodeConsoleInfo{}, nil
 	}
 
@@ -178,12 +200,12 @@ func dbConsolePodAcquireNodes(
 	if numMtn > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d mtn nodes", numMtn)
 		// The mountain hardware may be classified as either 'Mountain' or 'Hill'
-		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn, xname, numNodeReplicas)
+		nodes, errList, acquired = acquireNodesOfType("Mountain", numMtn)
 
 		// if we don't have enough 'Mountain' nodes, look for 'Hill' nodes
 		if len(acquired) < numMtn {
 			log.Printf("dbConsolePodAcquireNodes: acquiring %d hill nodes", numMtn-len(acquired))
-			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired), xname, numNodeReplicas)
+			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
 			if len(newNodes) > 0 {
 				if len(nodes) > 0 {
 					nodes += fmt.Sprintf(", %s ", newNodes)
@@ -198,7 +220,7 @@ func dbConsolePodAcquireNodes(
 
 	if numRvr > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d river nodes", numRvr)
-		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr, xname, numNodeReplicas)
+		newNodes, newErrList, newAcquired := acquireNodesOfType("River", numRvr)
 		if len(newNodes) > 0 {
 			if len(nodes) > 0 {
 				nodes += fmt.Sprintf(", %s ", newNodes)
@@ -384,8 +406,10 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 // dbConsolePodHeartbeat will update the heartbeat for all nodes assigned
 // to this console pod and remove the node from the ncis list.
 // Any nodes not assigned to the console pod will remain in ncis.
+// Detects whether console-node is monitoring itself and if so will attempt to
+// push back the self assigned node to the notUpdatedNodes list.
 // Any error(s) will be returned.
-func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
+func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHeartBeat) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
 
 	// Update all pods found by name and console pod ID.
 	// All errors are returned.
@@ -393,6 +417,15 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 	// updates that can be completed will immediately complete.
 	mu.Lock()
 	defer mu.Unlock()
+
+	// Find current number of consolepods active in the db, refresh cache only when needed.
+	currentTimestamp := time.Now().Unix()
+	timeDifference := time.Duration(currentTimestamp - consolePodCache.timestamp).Minutes()
+	if timeDifference >= time.Duration(consolePodCacheRefreshInterval).Minutes() {
+		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing.")
+		consolePodCache.findUniqueConsolePods()
+	}
+
 	var errList []string
 	rowsAffected = 0
 	notUpdated = []NodeConsoleInfo{}
@@ -401,7 +434,18 @@ func dbConsolePodHeartbeat(pod_id string, ncis *[]NodeConsoleInfo) (rowsAffected
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
 	`
-	for _, nci := range *ncis {
+	for _, nci := range heartBeatResponse.CurrNodes {
+		// Check if this node is monitoring itself
+		if nci.NodeName == heartBeatResponse.PodLocation {
+			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
+			if consolePodCache.numberOfPods > selfMonitorMax {
+				log.Printf("INFO: pushing %s back into the notUpdated pool\n", nci.NodeName)
+				notUpdated = append(notUpdated, nci)
+			} else {
+				break
+			}
+		}
+
 		result, err := DB.Exec(sqlStmt, nci.NodeName, pod_id)
 		if err != nil {
 			errMsg := fmt.Sprintf("WARN: dbConsolePodHeartbeat: There is an UPDATE error: %s", err)
