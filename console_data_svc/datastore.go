@@ -1,7 +1,7 @@
 //
 //  MIT License
 //
-//  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
+//  (C) Copyright 2021-2024 Hewlett Packard Enterprise Development LP
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files (the "Software"),
@@ -197,6 +197,8 @@ func dbConsolePodAcquireNodes(
 	var errList []string
 	acquired = []NodeConsoleInfo{}
 
+	// NOTE: 'Mountain', 'Hill', and 'Paradise' nodes all count as 'Mountain' nodes since the
+	//  expect script required to connect to the consoles use more resources in the pod.
 	if numMtn > 0 {
 		log.Printf("dbConsolePodAcquireNodes: acquiring %d mtn nodes", numMtn)
 		// The mountain hardware may be classified as either 'Mountain' or 'Hill'
@@ -206,6 +208,21 @@ func dbConsolePodAcquireNodes(
 		if len(acquired) < numMtn {
 			log.Printf("dbConsolePodAcquireNodes: acquiring %d hill nodes", numMtn-len(acquired))
 			newNodes, newErrList, newAcquired := acquireNodesOfType("Hill", numMtn-len(acquired))
+			if len(newNodes) > 0 {
+				if len(nodes) > 0 {
+					nodes += fmt.Sprintf(", %s ", newNodes)
+				} else {
+					nodes = newNodes
+				}
+			}
+			errList = append(errList, newErrList...)
+			acquired = append(acquired, newAcquired...)
+		}
+
+		// if we don't have enough 'Mountain' and 'Hill' nodes, look for 'Paradise' nodes
+		if len(acquired) < numMtn {
+			log.Printf("dbConsolePodAcquireNodes: acquiring %d paradise nodes", numMtn-len(acquired))
+			newNodes, newErrList, newAcquired := acquireNodesOfType("Paradise", numMtn-len(acquired))
 			if len(newNodes) > 0 {
 				if len(nodes) > 0 {
 					nodes += fmt.Sprintf(", %s ", newNodes)
