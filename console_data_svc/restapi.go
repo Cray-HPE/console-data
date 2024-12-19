@@ -51,6 +51,11 @@ type nodeConsoleInfoHeartBeat struct {
 	PodLocation string // location of the current node pod in kubernetes
 }
 
+// Struct to hold information about currently active node pods
+type NodePodInfo struct {
+	NumActivePods int `json:"numactivepods"`
+}
+
 func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsoleInfo {
 	return NodeConsoleInfo{NodeName: nodeName, BmcName: bmcName, BmcFqdn: bmcFqdn,
 		Class: class, NID: nid, Role: role}
@@ -59,7 +64,7 @@ func newNCI(nodeName, bmcName, bmcFqdn, class, role string, nid int) NodeConsole
 // acquireNodes(podId, numRiver, numMtn) → returns list of nodes and assigns them to pod with current timestamp (called by console-node)
 // console-node will also provide the node alias and xname it is running on to filter for resiliency purposes.
 // pod_id will be stateful set named (node-1, node-1, node-x)
-// Give me up to 1k mtgn and 500 river.
+// Give me up to 1k mtn and 500 river.
 // Makes the assignments based on what is available.
 // Return the new list of nodes (consoleNI struct) of what was assigned.
 // May return nothing in the vast majority of times.
@@ -454,6 +459,18 @@ func deleteNodes(w http.ResponseWriter, r *http.Request) {
 		Msg: fmt.Sprintf("deleted=%d", rowsDeleted),
 	}
 	SendResponseJSON(w, http.StatusOK, body)
+}
+
+// Basic liveness probe
+func getNumActiveNodePods(w http.ResponseWriter, r *http.Request) {
+	// Query the database for the number of currently active pods
+	var npi NodePodInfo
+	npi.NumActivePods = dbFindActiveConsolePods()
+
+	// Let the caller know we were successful.  The console pod
+	// is part of the response in nci.
+	SendResponseJSON(w, http.StatusOK, npi)
+	return
 }
 
 // Basic liveness probe
