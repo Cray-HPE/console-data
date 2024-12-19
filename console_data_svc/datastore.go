@@ -56,11 +56,36 @@ var DB *sql.DB
 // Prevent synchronous access by multiple concurrent requests where needed.
 var mu sync.Mutex
 
-// Track how many console-pods are currently running.
-var consolePodCache *ConsolePodsCache = NewConsolePodsCache()
+// Map to keep track of how many and which pods are actively acquiring nodes
+// NOTE: these should only be accessed under the protection of the 'mu' lock
+var nodePodsAcquiring = make(map[string]time.Time)
 
-// Only call the database every few minutes so that heartbeat does not overload the database.
-const consolePodCacheRefreshInterval int = 5
+// Update the timestamp for an actively acquiring pod
+func notifyNodeAcquiring(pod string) {
+	nodePodsAcquiring[pod] = time.Now()
+}
+
+// Clear out the pods that haven't been heard from in a while
+func clearStaleNodesAcquiring(limit time.Duration) {
+	// gather the pods that haven't reported in within duration of now
+	tsNow := time.Now()
+	stalePods := []string{}
+	for pod, ts := range nodePodsAcquiring {
+		if ts.Add(limit).Before(tsNow) {
+			stalePods = append(stalePods, pod)
+		}
+	}
+
+	// clear the entries from the map that are no longer phoning home
+	for _, pod := range stalePods {
+		delete(nodePodsAcquiring, pod)
+	}
+}
+
+// Get the number of currently active pods
+func getNumActivePods() int {
+	return len(nodePodsAcquiring)
+}
 
 // Only one console-node pod can monitor itself if it is the only one running.
 const selfMonitorMax int = 1
@@ -107,29 +132,6 @@ func prepareDB() (err error) {
 		return err
 	}
 	return nil
-}
-
-// Queries the database to find number of unique console-pod ids and caches the results with a timestamp.
-func (podsCache *ConsolePodsCache) findUniqueConsolePods() {
-	sqlStmt := `select distinct console_pod_id from ownership where console_pod_id is not NULL`
-	result, err := DB.Exec(sqlStmt)
-
-	if err != nil {
-		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a SELECT error: %s", err.Error())
-		log.Printf(errMsg)
-		return
-	}
-
-	numOfPods, err := result.RowsAffected()
-	if err != nil {
-		errMsg := fmt.Sprintf("WARN: findUniqueConsolePods: There is a rowsAffected error: %s", err.Error())
-		log.Printf(errMsg)
-		return
-	}
-	// Store the values in the cache
-	podsCache.numberOfPods = int(numOfPods)
-	podsCache.timestamp = time.Now().Unix()
-	log.Printf("INFO: consolePodCache is updated with numOfPods: %d timestamp: %d", podsCache.numberOfPods, podsCache.timestamp)
 }
 
 // acquireNodesOfType will get a set of nodes for a particular type
@@ -185,14 +187,18 @@ func dbConsolePodAcquireNodes(
 	numMtn,
 	numRvr int) (rowsAffected int64, acquired []NodeConsoleInfo, err error) {
 
+	mu.Lock()
+	defer mu.Unlock()
+
+	// register that this pod has checked in
+	notifyNodeAcquiring(pod_id)
+
 	// Exit quickly when no nodes were requested.
 	if numMtn < 1 && numRvr < 1 {
 		log.Printf("dbConsolePodAcquireNodes: the requested number of Mtn and Rvr was zero.  Returning.")
 		return 0, []NodeConsoleInfo{}, nil
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
 	var nodes string
 	var errList []string
 	acquired = []NodeConsoleInfo{}
@@ -329,7 +335,7 @@ func dbUpdateNodes(ncis *[]NodeConsoleInfo) (rowsInserted int64, err error) {
 			errList = append(errList, errMsg)
 		}
 		if result != nil {
-			// On an insert operation RowsAffected will be the count acually inserted.
+			// On an insert operation RowsAffected will be the count actually inserted.
 			// This will be 1 for new records and 0 for a duplicate which is ignored or
 			// in the case of a check constraint violation.
 			i64, _ := result.RowsAffected()
@@ -371,6 +377,9 @@ func dbClearStaleNodes(duration int) (rowsAffected int64, err error) {
 		rowsAffected, _ = result.RowsAffected()
 		debugLog.Println(fmt.Sprintf("result.RowsAffected %d", rowsAffected))
 	}
+
+	// clear the cached acquiring pods
+	clearStaleNodesAcquiring(time.Duration(duration) * time.Minute)
 
 	return rowsAffected, err
 }
@@ -420,6 +429,14 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 	return nil
 }
 
+func dbFindActiveConsolePods() (numActivePods int) {
+	// Top level call - lock the db
+	mu.Lock()
+	defer mu.Unlock()
+
+	return getNumActivePods()
+}
+
 // dbConsolePodHeartbeat will update the heartbeat for all nodes assigned
 // to this console pod and remove the node from the ncis list.
 // Any nodes not assigned to the console pod will remain in ncis.
@@ -427,26 +444,24 @@ func dbFindConsolePodForNode(nci *NodeConsoleInfo) (err error) {
 // push back the self assigned node to the notUpdatedNodes list.
 // Any error(s) will be returned.
 func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHeartBeat) (rowsAffected int64, notUpdated []NodeConsoleInfo, err error) {
+	// Top level call - lock the db
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Update all pods found by name and console pod ID.
 	// All errors are returned.
 	// This first cut is non-transactional meaning that any
 	// updates that can be completed will immediately complete.
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Find current number of consolepods active in the db, refresh cache only when needed.
-	currentTimestamp := time.Now().Unix()
-	timeDifference := time.Duration(currentTimestamp - consolePodCache.timestamp).Minutes()
-	if timeDifference >= time.Duration(consolePodCacheRefreshInterval).Minutes() {
-		log.Printf("INFO: dbConsolePodHeartbeat: consolePodCache is refreshing.")
-		consolePodCache.findUniqueConsolePods()
-	}
 
 	var errList []string
 	rowsAffected = 0
 	notUpdated = []NodeConsoleInfo{}
 
+	// find the number of current node pods
+	notifyNodeAcquiring(pod_id)
+	currentNodePods := getNumActivePods()
+
+	// update each node included in the heartbeat call
 	sqlStmt := `
 		update ownership set heartbeat=now()
 		where node_name = $1 and console_pod_id = $2
@@ -455,7 +470,7 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 		// Check if this node is monitoring itself
 		if nci.NodeName == heartBeatResponse.PodLocation {
 			log.Printf("WARN: node %s monitoring itself", nci.NodeName)
-			if consolePodCache.numberOfPods > selfMonitorMax {
+			if currentNodePods > selfMonitorMax {
 				log.Printf("INFO: pushing %s back into the notUpdated pool\n", nci.NodeName)
 				notUpdated = append(notUpdated, nci)
 			} else {
@@ -470,7 +485,7 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 			errList = append(errList, errMsg)
 		}
 		if result != nil {
-			// On an update operation RowsAffected will be the count acually updated.
+			// On an update operation RowsAffected will be the count actually updated.
 			ra, _ := result.RowsAffected()
 			debugLog.Println(fmt.Sprintf("result.RowsAffected %d", ra))
 			if ra == 0 {
@@ -481,11 +496,11 @@ func dbConsolePodHeartbeat(pod_id string, heartBeatResponse *nodeConsoleInfoHear
 				rowsAffected += ra
 			}
 		}
-
 	}
-	// Let the caller see the list that was not updated (if any).
+
+	// Rows not updated represent nodes that are monitored by a different pod
 	for _, nci := range notUpdated {
-		log.Printf("nci not updated: %s", nci.NodeName)
+		log.Printf("Node no longer assigned to this pod: %s", nci.NodeName)
 	}
 
 	if len(errList) > 0 {

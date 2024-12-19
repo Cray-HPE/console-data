@@ -91,6 +91,11 @@ var httpRoutes = []httpRoute{
 	// Returns a NodeConsoleInfo with the console pod name or
 	// empty pod name if not assigned.
 	createRoute("GET", "/v1/consolepod/([0-9a-z]+)", findConsolePodForNode),
+
+	// Find the console pod for the node (specified in the URI).
+	// Returns a NodeConsoleInfo with the console pod name or
+	// empty pod name if not assigned.
+	createRoute("GET", "/v1/activepods", getNumActiveNodePods),
 }
 
 func createRoute(httpMethod, uriPattern string, handler http.HandlerFunc) httpRoute {
