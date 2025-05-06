@@ -33,7 +33,7 @@ sources:
   - "https://github.com/Cray-HPE/console-data"
 dependencies:
   - name: cray-service
-    version: ^12.0.0
+    version: ~12.0.0
     repository: "https://artifactory.algol60.net/artifactory/csm-helm-charts/"
   - name: cray-postgresql
     version: ~2.0.0
